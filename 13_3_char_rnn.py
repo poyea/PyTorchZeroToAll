@@ -1,7 +1,4 @@
 # https://github.com/spro/practical-pytorch
-import time
-import os
-
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -13,7 +10,6 @@ hidden_size = 100
 n_layers = 3
 batch_size = 1
 n_epochs = 100
-filename = 'shakespeare.txt'
 n_characters = 128  # ASCII
 
 
@@ -49,8 +45,8 @@ class RNN(nn.Module):
         return Variable(hidden)
 
 
-def str2tensor(str):
-    tensor = [ord(c) for c in str]
+def str2tensor(string):
+    tensor = [ord(c) for c in string]
     tensor = torch.LongTensor(tensor)
 
     if torch.cuda.is_available():
@@ -90,57 +86,62 @@ def generate(decoder, prime_str='A', predict_len=100, temperature=0.8):
 # http://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html.
 
 
-def train(line):
+def train_teacher_forching(line):
     input = str2tensor(line[:-1])
     target = str2tensor(line[1:])
 
     hidden = decoder.init_hidden()
-    decoder.zero_grad()
     loss = 0
 
     for c in range(len(input)):
         output, hidden = decoder(input[c], hidden)
         loss += criterion(output, target[c])
 
+    decoder.zero_grad()
     loss.backward()
     decoder_optimizer.step()
 
     return loss.data[0] / len(input)
 
 
-def save():
-    save_filename = os.path.splitext(os.path.basename(filename))[0] + '.pt'
-    torch.save(decoder, save_filename)
-    print('Saved as %s' % save_filename)
+def train(line):
+    input = str2tensor(line[:-1])
+    target = str2tensor(line[1:])
 
+    hidden = decoder.init_hidden()
+    decoder_in = input[0]
+    loss = 0
 
-decoder = RNN(n_characters, hidden_size, n_characters, n_layers)
-if torch.cuda.is_available():
-    decoder.cuda()
+    for c in range(len(input)):
+        output, hidden = decoder(decoder_in, hidden)
+        loss += criterion(output, target[c])
+        decoder_in = output.max(1)[1]
 
-decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=0.001)
-criterion = nn.CrossEntropyLoss()
+    decoder.zero_grad()
+    loss.backward()
+    decoder_optimizer.step()
 
+    return loss.data[0] / len(input)
 
-train_loader = DataLoader(dataset=TextDataset(),
-                          batch_size=batch_size,
-                          shuffle=True)
+if __name__ == '__main__':
 
+    decoder = RNN(n_characters, hidden_size, n_characters, n_layers)
+    if torch.cuda.is_available():
+        decoder.cuda()
 
-try:
+    decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss()
+
+    train_loader = DataLoader(dataset=TextDataset(),
+                              batch_size=batch_size,
+                              shuffle=True)
+
     print("Training for %d epochs..." % n_epochs)
     for epoch in range(1, n_epochs + 1):
         for i, (lines, _) in enumerate(train_loader):
             loss = train(lines[0])  # Batch size is 1
 
             if i % 100 == 0:
-                print('[(%d %d%%) %.4f]' %
+                print('[(%d %d%%) loss: %.4f]' %
                       (epoch, epoch / n_epochs * 100, loss))
                 print(generate(decoder, 'Wh', 100), '\n')
-
-    print("Saving...")
-    save()
-
-except KeyboardInterrupt:
-    print("Saving before quit...")
-    save()

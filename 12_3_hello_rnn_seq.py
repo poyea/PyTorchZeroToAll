@@ -19,16 +19,9 @@ x_one_hot = [[[1, 0, 0, 0, 0],   # h 0
 
 y_data = [1, 0, 2, 3, 3, 4]    # ihello
 
-
-def to_var(x):
-    if torch.cuda.is_available():
-        x = x.cuda()
-    return Variable(x)
-
-
 # As we have one batch of samples, we will change them to variables only once
-inputs = to_var(torch.Tensor(x_one_hot))
-labels = to_var(torch.LongTensor(y_data))
+inputs = Variable(torch.Tensor(x_one_hot))
+labels = Variable(torch.LongTensor(y_data))
 
 num_classes = 5
 input_size = 5  # one-hot size
@@ -53,15 +46,16 @@ class RNN(nn.Module):
 
     def forward(self, x):
         # Initialize hidden and cell states
-        h_0 = to_var(torch.zeros(
-            x.size(0), self.num_layers, self.hidden_size))
+        # (num_layers * num_directions, batch, hidden_size) for batch_first=True
+        h_0 = Variable(torch.zeros(
+            self.num_layers, x.size(0), self.hidden_size))
 
         # Reshape input
         x.view(x.size(0), self.sequence_length, self.input_size)
 
         # Propagate input through RNN
         # Input: (batch, seq_len, input_size)
-        # h_0: (batch, num_layers * num_directions, hidden_size)
+        # h_0: (num_layers * num_directions, batch, hidden_size)
 
         out, _ = self.rnn(x, h_0)
         return out.view(-1, num_classes)
@@ -69,9 +63,6 @@ class RNN(nn.Module):
 
 # Instantiate RNN model
 rnn = RNN(num_classes, input_size, hidden_size, num_layers)
-if torch.cuda.is_available():
-    rnn.cuda()
-
 print(rnn)
 
 # Set loss and optimizer function
@@ -87,7 +78,7 @@ for epoch in range(100):
     loss.backward()
     optimizer.step()
     _, idx = outputs.max(1)
-    idx = idx.data.cpu().numpy()
+    idx = idx.data.numpy()
     result_str = [idx2char[c] for c in idx.squeeze()]
     print("epoch: %d, loss: %1.3f" % (epoch + 1, loss.data[0]))
     print("Predicted string: ", ''.join(result_str))
